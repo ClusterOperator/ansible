@@ -1,0 +1,9 @@
+- hosts:
+  - kube-master
+  - kube-worker
+  - new-worker
+  roles:
+  - prepare/repository
+  - prepare/base
+  - prepare/nameserver
+  - chrony

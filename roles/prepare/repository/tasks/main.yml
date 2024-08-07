@@ -1,0 +1,139 @@
+- block:
+  - block:
+    - block:
+      - name: Create repository backup directory
+        file:
+          path: /etc/yum.repos.d/bak
+          state: directory
+
+      - name: Backup the old repository and clean yum cache
+        shell: "sudo mv -f /etc/yum.repos.d/*.repo /etc/yum.repos.d/bak >/dev/null 2>&1 || sudo ls /etc/yum.repos.d/ >/dev/null 2>&1 || yum clean all >/dev/null 2>&1 || rm -rf /var/cache/yum/* 2>&1"
+
+      - name: Remove other repository
+        file:
+          path: /etc/yum.repos.d/*
+          state: absent
+      when: ansible_distribution in [ 'CentOS','RedHat','EulerOS','openEuler','Kylin Linux Advanced Server' ]
+
+    - block:
+      - name: Create repository backup directory
+        file:
+          path: /etc/apt/bak
+          state: directory
+
+      - name: Backup the old repository
+        shell: "sudo mv -f /etc/apt/*.list /etc/apt/bak >/dev/null 2>&1 || sudo ls /etc/apt/ >/dev/null 2>&1"
+
+      - name: Remove other repository
+        file:
+          path: /etc/apt/*
+          state: absent
+      when: ansible_distribution in [ 'Ubuntu','Debian','Kylin' ]
+    when: yum_operate == 'replace'
+
+  - name: Install yum-plugin-protectbase rpm package
+    yum:
+      name: yum-plugin-protectbase
+      state: latest
+    when:
+    - yum_operate == 'coexist'
+    - ansible_distribution in [ 'CentOS','RedHat','EulerOS','openEuler' ]
+
+  - name: Insert yum record
+    blockinfile:
+      path: "/etc/yum.conf"
+      block: "sslverify=0"
+      state: present
+    when: ansible_distribution in [ 'CentOS','RedHat','EulerOS','openEuler','Kylin Linux Advanced Server' ]
+
+  - block:
+    - name: RedHat | Add amd64 offline repository
+      template:
+        src: kubeops.repo-linux-amd64.j2
+        dest: /etc/yum.repos.d/kubeops.repo
+      when: architectures == 'amd64'
+
+    - name: RedHat | Add arm64 offline repository
+      template:
+        src: kubeops.repo-linux-arm64.j2
+        dest: /etc/yum.repos.d/kubeops.repo
+      when: architectures == 'arm64'
+    when: ansible_distribution in [ 'CentOS','RedHat' ]
+
+  - block:
+    - name: EulerOS | Add amd64 offline repository
+      template:
+        src: kubeops.repo-euler-amd64.j2
+        dest: /etc/yum.repos.d/kubeops.repo
+      when: architectures == 'amd64'
+
+    - name: EulerOS | Add arm64 offline repository
+      template:
+        src: kubeops.repo-euler-arm64.j2
+        dest: /etc/yum.repos.d/kubeops.repo
+      when: architectures == 'arm64'
+    when: ansible_distribution in [ 'EulerOS' ]
+
+  - name: openEuler | Add offline repository
+    template:
+      src: kubeops.repo-openeuler.j2
+      dest: /etc/yum.repos.d/kubeops.repo
+    when: ansible_distribution in [ 'openEuler' ]
+
+  - block:
+    - name: Debian (amd64)| Add apt repository
+      template:
+        src: kubeops.repo-ubuntu-amd64.j2
+        dest: /etc/apt/sources.list
+      when: architectures == "amd64"
+
+    - name: Debian (arm64) | Add apt repository
+      template:
+        src: kubeops.repo-ubuntu-arm64.j2
+        dest: /etc/apt/sources.list
+      when: architectures == "arm64"
+    when: ansible_distribution in [ 'Ubuntu','Debian' ]
+
+  - block:
+    - name: Kylin Linux Advanced Server | Add amd64 offline repository
+      template:
+        src: kubeops.repo-kylin-amd64-rpm.j2
+        dest: /etc/yum.repos.d/kubeops.repo
+      when: architectures == 'amd64'
+
+    - name: Kylin Linux Advanced Server | Add arm64 offline repository
+      template:
+        src: kubeops.repo-kylin-arm64-rpm.j2
+        dest: /etc/yum.repos.d/kubeops.repo
+      when: architectures == 'arm64'
+    when: ansible_distribution in [ 'Kylin Linux Advanced Server' ]
+
+  - block:
+    - name: Kylin | Add amd64 offline repository
+      template:
+        src: kubeops.repo-kylin-amd64-deb.j2
+        dest: /etc/apt/sources.list
+      when: architectures == 'amd64'
+
+    - name: Kylin | Add arm64 offline repository
+      template:
+        src: kubeops.repo-kylin-arm64-deb.j2
+        dest: /etc/apt/sources.list
+      when: architectures == 'arm64'
+    when: ansible_distribution in [ 'Kylin' ]
+
+  - block:
+    - name: Yum | Clean the repository cache
+      shell: "sudo yum clean all >/dev/null 2>&1 || sudo ls /etc/yum.repos.d/ >/dev/null 2>&1"
+      ignore_errors: true
+
+    - name: Yum | Building the repository cache
+      shell: "sudo yum makecache >/dev/null 2>&1 || sudo ls /etc/yum.repos.d/ >/dev/null 2>&1"
+      ignore_errors: true
+    when: ansible_distribution in [ 'CentOS','RedHat','EulerOS','openEuler','Kylin Linux Advanced Server' ]
+
+  - name: Apt | Clean the repository cache
+    shell: "sudo apt-get clean"
+    ignore_errors: true
+    when: ansible_distribution in [ 'Ubuntu','Debian','Kylin' ]
+  when: yum_operate != 'no'

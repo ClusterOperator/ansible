@@ -1,0 +1,109 @@
+- name: Download kubeadm kubelet kubectl file
+  get_url:
+    validate_certs: no
+    url: "{{ k8s_download_url }}"
+    dest: "{{ base_dir }}/"
+    timeout: "{{ download_timeout_online }}"
+
+- name: Unarchive kubeadm kubelet kubectl file
+  unarchive:
+    src: "{{ base_dir }}/k8s.tar.gz"
+    dest: "{{ base_dir }}/"
+    remote_src: yes
+
+- name: Copy kubeadm kubelet kubectl file
+  copy:
+    src: "{{ base_dir}}/k8s/{{ item }}"
+    dest: "{{ bin_dir }}/"
+    remote_src: yes
+    mode: "0755"
+  with_items:
+  - kubeadm
+  - kubelet
+  - kubectl
+
+- name: Prepare some dirs
+  file: name={{ item }} state=directory
+  with_items:
+  - /etc/kubernetes/images
+  - /etc/kubernetes/manifests
+  - /usr/lib/systemd/system/kubelet.service.d
+
+- name: Create kubelet systemd unit file
+  template: src=kubelet.service.j2 dest=/usr/lib/systemd/system/kubelet.service
+
+- name: Create kubelet config file
+  template: src=10-kubeadm.conf.j2 dest=/usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf
+
+- name: Create kubelet params file
+  template: src=kubelet.config.j2 dest=/etc/sysconfig/kubelet
+  when: ansible_distribution in [ "CentOS","RedHat","EulerOS","openEuler",'Kylin Linux Advanced Server' ]
+
+- name: Create kubelet params file
+  template: src=kubelet.config.j2 dest=/etc/default/kubelet
+  when: ansible_distribution in [ 'Ubuntu','Debian','Kylin' ]
+
+- name: Enable kubelet serivce
+  shell: systemctl enable kubelet
+  ignore_errors: true
+
+- name: Configure kubectl command line auto-completion
+  shell: kubectl completion bash > /usr/share/bash-completion/completions/kubectl
+  ignore_errors: true
+
+- block:
+  - name: Download kube-master image
+    get_url:
+      validate_certs: no
+      url: "{{ item }}"
+      dest: "{{ base_dir }}/k8s"
+      timeout: "{{ download_timeout_online }}"
+    with_items:
+    - "{{ kube_controller_manager_download_url }}"
+    - "{{ kube_apiserver_download_url }}"
+    - "{{ kube_scheduler_download_url }}"
+
+  - name: Docker | Load kube-master image
+    shell: "{{ bin_dir }}/docker load -i {{ base_dir }}/k8s/{{ item }}"
+    with_items:
+    - kube-controller-manager.tar
+    - kube-apiserver.tar
+    - kube-scheduler.tar
+    when: container_runtime == 'docker'
+
+  - name: Containerd | Load kube-master image
+    shell: "{{ bin_dir }}/ctr -n=k8s.io images import {{ base_dir }}/k8s/{{ item }}"
+    with_items:
+    - kube-controller-manager.tar
+    - kube-apiserver.tar
+    - kube-scheduler.tar
+    when: container_runtime == 'containerd'
+  when: inventory_hostname in groups['kube-master']
+
+- block:
+  - name: Download kube-proxy pause image
+    get_url:
+      validate_certs: no
+      url: "{{ item }}"
+      dest: "{{ base_dir }}/k8s"
+      timeout: "{{ download_timeout_online }}"
+    with_items:
+    - "{{ kube_proxy_download_url }}"
+    - "{{ pause_download_url }}"
+
+  - block:
+    - name: Docker | Load kube-worker image
+      shell: "{{ bin_dir }}/docker load -i {{ base_dir }}/k8s/{{ item }}"
+      with_items:
+      - kube-proxy.tar
+      - pause.tar
+    when: container_runtime == 'docker'
+
+  - block:
+    - name: Containerd | Load kube-worker image
+      shell: "{{ bin_dir }}/ctr -n=k8s.io images import {{ base_dir }}/k8s/{{ item }}"
+      with_items:
+      - kube-proxy.tar
+      - pause.tar
+    when: container_runtime == 'containerd'
+  when: inventory_hostname in (groups['kube-worker'] + groups['new-worker'])

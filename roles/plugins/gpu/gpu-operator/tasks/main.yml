@@ -1,0 +1,15 @@
+- block:
+  - include_tasks: enable.yml
+    when: component_created_by == 'cluster'
+
+  - include_tasks: "{{ item }}"
+    with_items:
+    - disable.yml
+    - enable.yml
+    when: component_created_by == 'component'
+  when: enable_gpu == 'enable'
+
+- include_tasks: disable.yml
+  when:
+  - enable_gpu == 'disable'
+  - component_created_by == 'component'

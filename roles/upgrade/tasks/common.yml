@@ -1,0 +1,66 @@
+- name: Confirm kubeadm version
+  command: "{{ bin_dir }}/kubeadm version -o short"
+  register: kubeadm_version_output
+
+- name: Setup kubeadm api version to v1beta1
+  set_fact:
+    kubeadmConfig_api_version: v1beta1
+  when:
+  - kubeadm_version_output.stdout is version('v1.13.0', '>=')
+  - kubeadm_version_output.stdout is version('v1.15.0', '<')
+
+- name: Setup kubeadm api version to v1beta2
+  set_fact:
+    kubeadmConfig_api_version: v1beta2
+  when: kubeadm_version_output.stdout is version('v1.15.0', '>=')
+
+- name: Remove unused parameters iptables.max
+  lineinfile:
+    path: /etc/kubernetes/kubeadm-config.yaml
+    regexp: 'max:'
+    state: absent
+
+- name: Remove unused parameters resourceContainer
+  lineinfile:
+    path: /etc/kubernetes/kubeadm-config.yaml
+    regexp: 'resourceContainer:'
+    state: absent
+
+- name: Upgrade kubeadm config version
+  lineinfile:
+    path: /etc/kubernetes/kubeadm-config.yaml
+    regexp: '^kubernetesVersion'
+    line: "kubernetesVersion: {{ kube_upgrade_version }}"
+
+- name: "Migration kubeadm config to {{ kube_upgrade_version }} version"
+  shell: >
+    {{ bin_dir }}/kubeadm config migrate
+    --old-config=/etc/kubernetes/kubeadm-config.yaml
+    --new-config=/etc/kubernetes/kubeadm-config.yaml
+  when: kubeadmConfig_api_version != "v1beta2"
+
+- name: "Upgrade the first master node: {{ inventory_hostname }} to {{ kube_upgrade_version }}"
+  shell: >
+    {{ bin_dir }}/kubeadm upgrade apply --config=/etc/kubernetes/kubeadm-config.yaml --force
+    --ignore-preflight-errors=CoreDNSUnsupportedPlugins,CoreDNSMigration
+  when: inventory_hostname == groups['kube-master'][0]
+
+- name: "Upgrade the remaining master nodes: {{ inventory_hostname }} to {{ kube_upgrade_version }}"
+  shell: >
+    {{ bin_dir }}/kubeadm upgrade node
+    {% if kube_upgrade_version.split('.')[1]|int == 14 %}
+    experimental-control-plane
+    {% endif %}
+  when: 
+  - inventory_hostname != groups['kube-master'][0]
+  - inventory_hostname in groups['kube-master']
+
+- name: "Upgrade worker node: {{ inventory_hostname }} to {{ kube_upgrade_version }}"
+  shell: >
+    {{ bin_dir }}/kubeadm upgrade node
+    {% if kube_upgrade_version.split('.')[1]|int == 14 %}
+    config --kubelet-version {{ kube_upgrade_version }}
+    {% endif %}
+  when: 
+  - inventory_hostname in (groups['kube-worker'] + groups['new-worker'])
+  - inventory_hostname not in groups['kube-master']

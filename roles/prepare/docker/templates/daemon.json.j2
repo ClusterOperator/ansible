@@ -1,0 +1,26 @@
+{
+{% if docker_mirror_registry == "enable" %}
+  "registry-mirrors": [
+    "https://docker.mirrors.ustc.edu.cn",
+    "https://reg-mirror.qiniu.com",
+    "https://hub-mirror.c.163.com"
+  ], 
+{% endif %}
+{% if docker_remote_api == "enable" %}
+  "hosts": ["tcp://0.0.0.0:2376", "unix:///var/run/docker.sock"],
+{% endif %}
+{% if docker_insecure_registries is defined and docker_insecure_registries != None %}
+  "insecure-registries": [{% for registry in docker_insecure_registries %}"{{ registry }}"{% if not loop.last %},{% endif %}{% endfor %}],
+{% endif %}
+  "max-concurrent-downloads": {{ docker_max_concurrent_downloads | int }},
+  "log-driver": "{{ docker_log_driver }}",
+  "log-level": "{{ docker_log_level }}",
+  "log-opts": {
+    "max-size": "{{ docker_log_max_size }}",
+    "max-file": "{{ docker_log_max_file }}"
+    },
+  "live-restore": true,
+  "bip": "{{ docker_subnet }}",
+  "data-root": "{{ docker_storage_dir }}",
+  "exec-opts": ["native.cgroupdriver={{ cgroup_driver }}"]
+}

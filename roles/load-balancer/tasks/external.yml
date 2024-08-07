@@ -1,0 +1,128 @@
+- block:
+  - block:
+    - name: Status firewalld
+      shell: >
+        systemctl status firewalld | grep active || echo "not be found"
+      register: firewalld_already_installed
+
+    - name: Disable firewalld
+      service:
+        name: firewalld
+        state: stopped
+        enabled: no
+      when: '"active" in firewalld_already_installed.stdout'
+
+    - name: Temp stop selinux
+      shell: "setenforce 0"
+      failed_when: false
+
+    - name: Disable selinux
+      lineinfile:
+        dest: /etc/selinux/config
+        regexp: "^SELINUX="
+        line: "SELINUX=disabled"
+    when: ansible_distribution in [ 'CentOS','RedHat','EulerOS','openEuler','Kylin Linux Advanced Server' ]
+
+  - block:
+    - name: Debian | Status ufw
+      shell: >
+        systemctl status ufw | grep active || echo "not be found"
+      register: ufw_already_installed
+
+    - name: Debian | Disable UFW
+      service:
+        name: ufw
+        state: stopped
+        enabled: no
+      when: '"active" in ufw_already_installed.stdout'
+    when: ansible_distribution in [ 'Ubuntu','Debian','Kylin' ]
+
+  - block:
+    - name: Register the variable LB_IF_TMP
+      shell: "ip a|grep '{{ ssh_host }}/'|awk '{print $NF}'"
+      register: LB_IF_TMP
+
+    - name: Set the variable LB_IF
+      set_fact: LB_IF={{ LB_IF_TMP.stdout }}
+
+  - name: Creating related directories
+    file:
+      name: "{{ item }}"
+      state: directory
+    with_items:
+    - /etc/haproxy
+    - /etc/keepalived
+
+  - name: Configuration haproxy
+    template:
+      src: haproxy/haproxy.cfg.j2
+      dest: /etc/haproxy/haproxy.cfg
+
+  - name: Configuration keepalived primary node
+    template:
+      src: keepalived-master.conf.j2
+      dest: /etc/keepalived/keepalived.conf
+    when: lb_role == "master"
+
+  - name: Configuration keepalived slave node
+    template:
+      src: keepalived-backup.conf.j2
+      dest: /etc/keepalived/keepalived.conf
+    when: lb_role == "backup"
+
+  - block:
+    - name: CentOS | Uninstall haproxy + keepalived
+      yum:
+        name: "{{ item }}"
+        state: absent
+      with_items:
+      - haproxy
+      - keepalived
+
+    - name: CentOS | Install haproxy + keepalived
+      yum:
+        name: "{{ item }}"
+        state: present
+      with_items:
+      - haproxy
+      - keepalived
+    when: ansible_distribution in [ 'CentOS','RedHat','EulerOS','openEuler','Kylin Linux Advanced Server' ]
+
+  - block:
+    - name: Debian | Uninstall haproxy + keepalived
+      apt:
+        name: "{{ item }}"
+        state: absent
+      with_items:
+      - haproxy
+      - keepalived
+
+    - name: Debian | Install haproxy + keepalived
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+      - haproxy
+      - keepalived
+    when: ansible_distribution in [ 'Ubuntu','Debian','Kylin' ]
+
+  - name: Systemctl daemon-reload
+    systemd:
+      daemon_reload: yes
+
+  - name: Enable haproxy service
+    service:
+      name: "{{ item }}"
+      state: restarted
+      enabled: yes
+    with_items:
+    - haproxy
+    - keepalived
+
+  - name: Waiting for haproxy to running
+    shell: "systemctl status haproxy.service|grep Active"
+    register: haproxy_status
+    until: '"running" in haproxy_status.stdout'
+    retries: 8
+    delay: 2
+  when: inventory_hostname in groups['ex_lb']

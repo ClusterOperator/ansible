@@ -1,0 +1,24 @@
+- name: Create dns-cache directory
+  file:
+    path: /etc/kubernetes/plugins/dns-cache
+    state: directory
+
+- name: Get ClusterIP of kube-dns
+  shell: "{{ bin_dir }}/kubectl get svc -n kube-system | grep kube-dns | grep -v upstream | awk '{ print $3 }'"
+  register: kube_dns_clusterip
+
+- block:
+  - include_tasks: enable.yml
+    when: component_created_by == 'cluster'
+
+  - include_tasks: "{{ item }}"
+    with_items:
+    - disable.yml
+    - enable.yml
+    when: component_created_by == 'component'
+  when: enable_dns_cache == 'enable'
+
+- include_tasks: disable.yml
+  when:
+  - enable_dns_cache == 'disable'
+  - component_created_by == 'component'

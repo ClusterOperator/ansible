@@ -1,0 +1,10 @@
+- name: Create npd directory
+  file:
+    path: /etc/kubernetes/plugins/npd
+    state: directory
+
+- include_tasks: disable.yml
+  when: enable_npd == 'disable'
+
+- include_tasks: enable.yml
+  when: enable_npd == 'enable'

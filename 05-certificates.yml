@@ -1,0 +1,7 @@
+- hosts:
+  - kube-master
+  - kube-worker
+  - new-worker
+  roles:
+  - prepare/etcd-certificates
+  - prepare/kube-certificates

@@ -1,0 +1,44 @@
+- name: Create ingress directory
+  file:
+    path: /etc/kubernetes/plugins/ingress-controller
+    state: directory
+
+- name: Get kubernetes version
+  shell: "{{ bin_dir }}/kubeadm version -o short"
+  register: kubeadm_version_output
+
+- block:
+  - block:
+    - include_tasks: enable-nginx.yml
+      when: component_created_by == 'cluster'
+
+    - include_tasks: "{{ item }}"
+      with_items:
+      - disable-nginx.yml
+      - enable-nginx.yml
+      when: component_created_by == 'component'
+    when: enable_nginx == 'enable'
+
+  - include_tasks: disable-nginx.yml
+    when:
+    - enable_nginx == 'disable'
+    - component_created_by == 'component'
+  when: ingress_controller_type == 'nginx'
+
+- block:
+  - block:
+    - include_tasks: enable-traefik.yml
+      when: component_created_by == 'cluster'
+
+    - include_tasks: "{{ item }}"
+      with_items:
+      - disable-traefik.yml
+      - enable-traefik.yml
+      when: component_created_by == 'component'
+    when: enable_traefik == 'enable'
+
+  - include_tasks: disable-traefik.yml
+    when:
+    - enable_traefik == 'disable'
+    - component_created_by == 'component'
+  when: ingress_controller_type == 'traefik'

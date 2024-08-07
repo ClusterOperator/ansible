@@ -1,0 +1,5 @@
+- include_tasks: external.yml
+  when: lb_mode == "external"
+
+- include_tasks: internal.yml
+  when: lb_mode == "internal"

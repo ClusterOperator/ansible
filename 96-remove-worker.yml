@@ -1,0 +1,4 @@
+- hosts: del-worker
+  gather_facts: false
+  roles:
+  - remove

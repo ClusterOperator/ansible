@@ -1,0 +1,19 @@
+- name: Create etcd backup directory
+  file:
+    name: "/etc/kubernetes/backup/etcd"
+    state: directory
+
+- name: Backup etcd database
+  shell: "cd /etc/kubernetes/backup/etcd && \
+      ETCDCTL_API=3 {{ bin_dir }}/etcdctl snapshot save {{ etcd_snapshot_name }}"
+
+- name: Fetch backup file
+  fetch:
+    src: "/etc/kubernetes/backup/etcd/{{ etcd_snapshot_name }}"
+    dest: "/var/ko/data/backup/{{ cluster_name }}/{{ etcd_snapshot_name }}"
+    flat: yes
+
+- name: Remove etcd temp backup file
+  file:
+    name: "/etc/kubernetes/backup/etcd/{{ etcd_snapshot_name }}"
+    state: absent

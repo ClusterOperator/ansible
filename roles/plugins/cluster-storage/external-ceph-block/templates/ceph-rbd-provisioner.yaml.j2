@@ -1,0 +1,156 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ storage_rbd_provisioner_name }}
+  namespace: {{ provisioner_namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ storage_rbd_provisioner_name }}
+  namespace: {{ provisioner_namespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    resourceNames: ["kube-dns","coredns"]
+    verbs: ["list", "get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "delete"]
+  - apiGroups: ["policy"]
+    resourceNames: ["{{ storage_rbd_provisioner_name }}"]
+    resources: ["podsecuritypolicies"]
+    verbs: ["use"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ storage_rbd_provisioner_name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ storage_rbd_provisioner_name }}
+    namespace: {{ provisioner_namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ storage_rbd_provisioner_name }}
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ storage_rbd_provisioner_name }}
+  namespace: {{ provisioner_namespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ storage_rbd_provisioner_name }}
+  namespace: {{ provisioner_namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ storage_rbd_provisioner_name }}
+    namespace: {{ provisioner_namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ storage_rbd_provisioner_name }}
+---
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: {{ storage_rbd_provisioner_name }}
+  annotations:
+    seccomp.security.alpha.kubernetes.io/defaultProfileName:  'docker/default'
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'docker/default'
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+    rule: 'RunAsAny'
+  seLinux:
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  readOnlyRootFilesystem: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ storage_rbd_provisioner_name }}
+  namespace: {{ provisioner_namespace }}
+  labels:
+    app: {{ storage_rbd_provisioner_name }}
+    version: {{ rbd_provisioner_version }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ storage_rbd_provisioner_name }}
+      version: {{ rbd_provisioner_version }}
+  template:
+    metadata:
+      labels:
+        app: {{ storage_rbd_provisioner_name }}
+        version: {{ rbd_provisioner_version }}
+    spec:
+      priorityClassName: system-cluster-critical
+      serviceAccount: {{ storage_rbd_provisioner_name }}
+      containers:
+        - name: rbd-provisioner
+          image: {{ rbd_provisioner_image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PROVISIONER_NAME
+              value: {{ storage_rbd_provisioner_name }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          command:
+            - "/usr/local/bin/rbd-provisioner"
+          args:
+            - "-id=${POD_NAME}"

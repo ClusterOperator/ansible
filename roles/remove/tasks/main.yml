@@ -1,0 +1,27 @@
+- name: "Cordon worker node：{{ inventory_hostname }}"
+  shell: "{{ bin_dir }}/kubectl cordon {{ inventory_hostname }}"
+  ignore_errors: true
+  delegate_to: "{{ groups['kube-master'][0] }}"
+
+- name: "Drain worker node：Pod running on {{ inventory_hostname }}"
+  shell: >
+    {{ bin_dir }}/kubectl drain
+    --force
+    --ignore-daemonsets
+    --grace-period {{ drain_grace_period }}
+    --timeout {{ drain_timeout }}
+    --delete-local-data {{ inventory_hostname }}
+  ignore_errors: true
+  delegate_to: "{{ groups['kube-master'][0] }}"
+
+- name: Remove the worker role label from the node
+  shell: >
+    {{ bin_dir }}/kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker='' --overwrite &&
+    {{ bin_dir }}/kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker-
+  ignore_errors: true
+  delegate_to: "{{ groups['kube-master'][0] }}"
+
+- name: "Remove node：{{ inventory_hostname }}"
+  shell: "{{ bin_dir }}/kubectl delete node {{ inventory_hostname }}"
+  ignore_errors: true
+  delegate_to: "{{ groups['kube-master'][0] }}"

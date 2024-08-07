@@ -1,0 +1,25 @@
+# 提权操作
+ansible_become: true
+
+# haproxy监控绑定端口
+lb_haproxy_stats_bind_address: 9090
+# haproxy监控访问路径
+lb_haproxy_stats_uri: "/stats"
+# haproxy监控自动刷新时间（秒）
+lb_haproxy_stats_refresh: 10
+# haproxy监控用户名
+lb_haproxy_stats_user: "admin"
+# haproxy监控用户密码
+lb_haproxy_stats_password: "admin"
+# haproxy负载均衡算法，常见如下：
+# "roundrobin": 基于服务器权重的轮询
+# "leastconn": 基于服务器最小连接数
+# "source": 基于请求源IP地址
+# "uri": 基于请求的URI
+lb_haproxy_balance_alg: "roundrobin"
+
+# 区分多个instance的VRRP组播，同网段不能重复，取值在0-255之间
+# 因项目已设置vrrp报文单播模式，所以这个 ROUTER_ID 即便同网段里面有重复也没关系
+lb_keepalived_router_id: 222
+
+ssh_host: "{% if node_name_rule == 'hostname' %}{{ hostvars[inventory_hostname]['ansible_ssh_host'] }}{% else %}{{ inventory_hostname }}{% endif %}"

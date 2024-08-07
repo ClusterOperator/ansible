@@ -1,0 +1,5 @@
+- include_tasks: enable.yml
+  when: enable_cinder_provisioner == 'enable'
+
+- include_tasks: disable.yml
+  when: enable_cinder_provisioner == 'disable'

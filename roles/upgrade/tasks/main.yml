@@ -1,0 +1,21 @@
+- include_tasks: centos.yml
+
+- name: Config kublet
+  lineinfile:
+    path: /var/lib/kubelet/config.yaml
+    regexp: 'resolvConf:'
+    line: "resolvConf: {% if ansible_distribution == 'Ubuntu' %} /run/systemd/resolve/resolv.conf {% else %} /etc/resolv.conf {% endif %}"
+
+- name: Systemctl daemon-reload
+  systemd:
+    daemon_reload: yes
+
+- name: Restart kubelet service
+  service:
+    name: kubelet
+    state: restarted
+    enabled: yes
+
+- name: Update kubectl command line auto-completion
+  shell: "kubectl completion bash > /usr/share/bash-completion/completions/kubectl"
+  ignore_errors: true

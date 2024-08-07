@@ -1,0 +1,64 @@
+- name: Prepare directory
+  file: name={{ item }} state=directory
+  with_items:
+  - "{{ etcd_data_dir }}"
+
+- name: Download etcd file
+  get_url:
+    validate_certs: no
+    url: "{{ etcd_download_url }}"
+    dest: "{{ base_dir }}/"
+    timeout: "{{ download_timeout_online }}"
+  tags: upgrade
+
+- name: Unarchive etcd file
+  unarchive:
+    src: "{{ base_dir }}/etcd-{{ etcd_version }}-linux-{{ architectures }}.tar.gz"
+    dest: "{{ base_dir }}/"
+    remote_src: yes
+  tags: upgrade
+
+- name: Copy etcd file
+  copy:
+    src: "{{ base_dir}}/etcd-{{ etcd_version }}-linux-{{ architectures }}/{{ item }}"
+    dest: "{{ bin_dir }}/"
+    remote_src: yes
+    mode: "0755"
+  with_items:
+  - etcd
+  - etcdctl
+  tags: upgrade
+
+- block:
+  - name: Arm64 | Setup system ETCD_UNSUPPORTED_ARCH variable
+    lineinfile:
+      dest: "/etc/bashrc"
+      line: 'export ETCD_UNSUPPORTED_ARCH=arm64'
+    when: ansible_distribution in [ 'CentOS','RedHat','EulerOS','openEuler','Kylin Linux Advanced Server' ]
+
+  - name: Arm64 | Setup system ETCD_UNSUPPORTED_ARCH variable
+    lineinfile:
+      dest: "/etc/bash.bashrc"
+      line: 'export ETCD_UNSUPPORTED_ARCH=arm64'
+    when: ansible_distribution in [ 'Ubuntu','Debian','Kylin' ]
+  when: architectures == "arm64"
+
+- name: Create etcd systemd unit file
+  template: src=etcd.service.j2 dest=/etc/systemd/system/etcd.service
+  tags: upgrade
+
+- name: Enable etcd service
+  shell: systemctl enable etcd
+  ignore_errors: true
+
+- name: Start etcd service
+  shell: systemctl daemon-reload && systemctl restart etcd
+  tags: upgrade
+
+- name: Wait etcd service to start
+  shell: "systemctl status etcd.service|grep Active"
+  register: etcd_status
+  until: '"running" in etcd_status.stdout'
+  retries: 8
+  delay: 8
+  tags: upgrade

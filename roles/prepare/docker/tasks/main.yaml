@@ -1,0 +1,102 @@
+- name: Get whether Containerd has been installed
+  shell: 'systemctl status containerd|grep Active || echo "NOT FOUND"'
+  register: containerd_status
+
+- name: Error message
+  fail: msg="Containerd already installed!"
+  when: '"running" in containerd_status.stdout'
+
+- name: Prepare docker directory
+  file: name={{ item }} state=directory
+  with_items:
+  - /etc/docker
+
+- name: Create base directory
+  file: name={{ item }} state=directory
+  with_items:
+  - "{{ base_dir }}"
+
+- name: Download the Docker binaries
+  get_url:
+    validate_certs: no
+    url: "{{ docker_download_url }}"
+    dest: "{{ base_dir }}/"
+    timeout: "{{ download_timeout_online }}"
+  tags: upgrade
+
+- name: Unarchive the Docker binaries
+  unarchive:
+    src: "{{ base_dir }}/docker-{{ docker_version }}.tgz"
+    dest: "{{ base_dir }}/"
+    remote_src: yes
+  tags: upgrade
+
+- name: Converts Docker version information to a floating point number
+  set_fact:
+    DOCKER_VER: "{{ docker_version.split('.')[0]|int + docker_version.split('.')[1]|int/100 }}"
+  connection: local
+  run_once: true
+  tags: upgrade
+
+- name: Copy the docker file to env(>= 18.09.x)
+  copy:
+    src: "{{ base_dir}}/docker/{{ item }}"
+    dest: "{{ bin_dir }}/"
+    remote_src: yes
+    mode: "0755"
+  with_items:
+  - containerd
+  - containerd-shim
+  - docker-init
+  - runc
+  - docker
+  - ctr
+  - dockerd
+  - docker-proxy
+  tags: upgrade
+  when: "DOCKER_VER|float >= 18.09"
+
+- name: Copy the docker file to env(>= 20.10.x)
+  copy:
+    src: "{{ base_dir}}/docker/{{ item }}"
+    dest: "{{ bin_dir }}/"
+    remote_src: yes
+    mode: "0755"
+  with_items:
+  - containerd-shim-runc-v2
+  tags: upgrade
+  when: "DOCKER_VER|float >= 20.10"
+
+- name: Setup docker command completion
+  copy: src=docker dest=/etc/bash_completion.d/docker mode=0644
+  ignore_errors: true
+
+- name: Copy docker daemon file
+  template: src=daemon.json.j2 dest=/etc/docker/daemon.json
+
+- name: flush-iptables
+  shell: "iptables -P INPUT ACCEPT \
+        && iptables -F && iptables -X \
+        && iptables -F -t nat && iptables -X -t nat \
+        && iptables -F -t raw && iptables -X -t raw \
+        && iptables -F -t mangle && iptables -X -t mangle"
+
+- name: Create docker systemd unit file
+  template: src=docker.service.j2 dest=/etc/systemd/system/docker.service
+  tags: upgrade
+
+- name: Enable docker service
+  shell: systemctl enable docker
+  ignore_errors: true
+
+- name: Start docker service
+  shell: systemctl daemon-reload && systemctl restart docker
+  tags: upgrade
+
+- name: Waiting for docker to running
+  shell: "systemctl status docker.service|grep Active"
+  register: docker_status
+  until: '"running" in docker_status.stdout'
+  retries: 8
+  delay: 2
+  tags: upgrade

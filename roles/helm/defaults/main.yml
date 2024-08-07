@@ -1,0 +1,7 @@
+helm_home_dir: "{{ ansible_env.HOME | default('/root') }}/.helm"
+helm_deploy_dir: /etc/kubernetes/plugins/helm
+helm_namespace: kube-system
+tiller_sa: tiller
+history_max: 5
+# 如果默认官方repo 网络访问不稳定可以使用如下的阿里云镜像repo
+#repo_url: https://kubernetes.oss-cn-hangzhou.aliyuncs.com/charts
